@@ -115,11 +115,12 @@ async function createTranscriptions(
   retryCount = 0
 ) {
   const name = path.basename(filePath).replace(path.extname(filePath), '');
-  const transcodedFilePath = `tmp/${name}_transcodeed.mp3`;
-  await util.transAudioCode(filePath, transcodedFilePath);
-  const buffer = await fs.readFile(transcodedFilePath);
-  fs.remove(transcodedFilePath)
-    .catch(err => logger.error('移除临时文件失败：', err));
+  // const transcodedFilePath = `tmp/${name}_transcodeed.mp3`;
+  // await util.transAudioCode(filePath, transcodedFilePath);
+  // const buffer = await fs.readFile(transcodedFilePath);
+  // fs.remove(transcodedFilePath)
+  //   .catch(err => logger.error('移除临时文件失败：', err));
+  const buffer = await fs.readFile(filePath);
   let session: ClientHttp2Session;
   return (async () => {
     // 请求流
@@ -143,9 +144,8 @@ async function createTranscriptions(
         },
       }
     ));
-
     // 接收流为输出文本
-    const text = await receiveTrasciptionResult(stream);
+    const text = await receiveTrasciptionResult('text',stream);
     session.close();
     
     return text;
@@ -164,15 +164,81 @@ async function createTranscriptions(
   });
 }
 
+async function createPhomeMsg(
+  model = MODEL_NAME,
+  filePath: string,
+  token: string,
+  retryCount = 0
+) {
+  const name = path.basename(filePath).replace(path.extname(filePath), '');
+  // const transcodedFilePath = `tmp/${name}_transcodeed.mp3`;
+  // await util.transAudioCode(filePath, transcodedFilePath);
+  // const buffer = await fs.readFile(transcodedFilePath);
+  // fs.remove(transcodedFilePath)
+  //   .catch(err => logger.error('移除临时文件失败：', err));
+  const buffer = await fs.readFile(filePath);
+  let session: ClientHttp2Session;
+  return (async () => {
+    // 请求流
+    const deviceInfo = await core.acquireDeviceInfo(token);
+    let stream: ClientHttp2Stream;
+    ({ session, stream } = await core.requestStream(
+      "POST",
+      "/v1/api/chat/phone_msg",
+      {
+        chatID: "0",
+        voiceBytes: buffer,
+        characterID: CHARACTER_ID,
+        playSpeedLevel: "1",
+      },
+      token,
+      deviceInfo,
+      {
+        headers: {
+          Accept: "text/event-stream",
+          Referer: "https://hailuoai.com/",
+        },
+      }
+    ));
+    // 接收流为输出文本
+    const voice_text = await receiveTrasciptionResult('voice', stream);
+
+    // //将生成的文本按binary格式写入文件
+    // const binary = Buffer.from(voice_text, 'hex');
+    // const filePath = `./voice_output/${Date.now()}.mp3`
+    // await fs.outputFile(filePath, binary);
+    // const text = filePath
+    // session.close();
+    
+    // return text;
+
+    const binary = Buffer.from(voice_text, 'hex');
+    return binary;
+  })().catch((err) => {
+    session && session.close();
+    session = null;
+    if (retryCount < MAX_RETRY_COUNT) {
+      logger.error(`Stream response error: ${err.stack}`);
+      logger.warn(`Try again after ${RETRY_DELAY / 1000}s...`);
+      return (async () => {
+        await new Promise((resolve) => setTimeout(resolve, RETRY_DELAY));
+        return createPhomeMsg(model, filePath, token, retryCount + 1);
+      })();
+    }
+    throw err;
+  });
+}
+
 /**
  * 从流接收转写结果
  *
  * @param stream 响应流
  */
-async function receiveTrasciptionResult(stream: any): Promise<any> {
+async function receiveTrasciptionResult(type: string, stream: any): Promise<any> {
   return new Promise((resolve, reject) => {
     let text = "";
     const parser = createParser((event) => {
+      // logger.warn(`event:`, event);
       try {
         if (event.type !== "event") return;
         // 解析JSON
@@ -188,16 +254,32 @@ async function receiveTrasciptionResult(stream: any): Promise<any> {
         if(status_code != 0)
           throw new Error(`Stream response error: ${err_message}`);
         if (event.event == "asr_chunk") {
-          resolve(data.text);
-          stream.close();
+          if (type == "text")
+          {
+            resolve(data.text);
+            stream.close();
+          }
         }
         // 目前首个asr_chunk就可以获得完整的文本，如果有变动再启用下面这个代替它
-        // if (event.event == "asr_chunk")
-        //   text += data.text;
-        // else if (event.event == "audio_chunk") {
-        //   resolve(text);
-        //   stream.close();
-        // }
+        if (event.event == "asr_chunk")
+        {
+          if (type == "text")
+          {
+            text += data.text;
+          }    
+        }
+        else if (event.event == "audio_chunk") {
+          if (type == "text")
+          {
+            resolve(text);
+            stream.close();
+          }
+          if(type == "voice")
+            {
+              logger.warn(`data:`, data.hex[0]);
+              text += data.hex[0];
+            }
+        }
       } catch (err) {
         logger.error(err);
         reject(err);
@@ -213,4 +295,5 @@ async function receiveTrasciptionResult(stream: any): Promise<any> {
 export default {
   createSpeech,
   createTranscriptions,
+  createPhomeMsg,
 };

@@ -361,6 +361,7 @@ async function requestStream(
     queryStr += `&${key}=${userData[key]}`;
   }
   queryStr = queryStr.substring(1);
+  logger.info(`queryStr: ${queryStr}`);
   const formData = new FormData();
   for (let key in data) {
     if (!data[key]) continue;
@@ -381,6 +382,7 @@ async function requestStream(
       data.voiceBytes.subarray(0, 1024)
     )}`;
   data = formData;
+  logger.info(`uri: ${uri}`);
   const yy = util.md5(
     encodeURIComponent(`${uri}?${queryStr}`) +
       `_${dataJson}${util.md5(unix)}ooui`
@@ -390,8 +392,7 @@ async function requestStream(
     session.on("connect", () => resolve(session));
     session.on("error", reject);
   });
-
-  const stream = session.request({
+  const headers = {
     ":method": method,
     ":path": `${uri}?${queryStr}`,
     ":scheme": "https",
@@ -401,8 +402,10 @@ async function requestStream(
     ...(options.headers || {}),
     Yy: yy,
     ...data.getHeaders(),
-  });
-  stream.setTimeout(120000);
+  };
+  logger.info(`headers: ${JSON.stringify(headers)}`);
+  const stream = session.request(headers);
+  stream.setTimeout(320000);
   stream.setEncoding("utf8");
   stream.end(data.getBuffer());
   return {
