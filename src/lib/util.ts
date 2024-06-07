@@ -2,6 +2,7 @@ import os from "os";
 import path from "path";
 import crypto from "crypto";
 import { Readable, Writable } from "stream";
+import { exec } from 'child_process';
 
 import "colors";
 import sox from "sox";
@@ -314,19 +315,35 @@ const util = {
   },
 
   async transAudioCode(srcPath, destPath) {
+    // return new Promise((resolve, reject) => {
+    //   const job = sox.transcode(srcPath, destPath, {
+    //     sampleRate: 44100,
+    //     format: 'mp3',
+    //     channelCount: 2,
+    //     bitRate: 192 * 1024,
+    //     compressionQuality: 5
+    //   });
+    //   job.on('error', reject);
+    //   job.on('end', resolve);
+    //   job.start();
+    // });
     return new Promise((resolve, reject) => {
-      const job = sox.transcode(srcPath, destPath, {
-        sampleRate: 44100,
-        format: 'mp3',
-        channelCount: 2,
-        bitRate: 192 * 1024,
-        compressionQuality: 5
+      const command = `sox ${srcPath} ${destPath}`;
+      exec(command, (error, stdout, stderr) => {
+        if (error) {
+          reject(error);
+        } else {
+          resolve("");
+        }
       });
-      job.on('error', reject);
-      job.on('end', resolve);
-      job.start();
     });
+    
   }
 };
+
+
+
+
+
 
 export default util;

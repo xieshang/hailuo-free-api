@@ -171,12 +171,23 @@ async function createPhomeMsg(
   retryCount = 0
 ) {
   const name = path.basename(filePath).replace(path.extname(filePath), '');
-  // const transcodedFilePath = `tmp/${name}_transcodeed.mp3`;
-  // await util.transAudioCode(filePath, transcodedFilePath);
-  // const buffer = await fs.readFile(transcodedFilePath);
-  // fs.remove(transcodedFilePath)
-  //   .catch(err => logger.error('移除临时文件失败：', err));
-  const buffer = await fs.readFile(filePath);
+  let buffer;
+  if(1)
+  {
+    const transcodedFilePath = `tmp/${name}_transcodeed.mp3`;
+    logger.info(`开始转码：${filePath} -> ${transcodedFilePath}`)
+    try {
+      await util.transAudioCode(filePath, transcodedFilePath);
+      buffer = await fs.readFile(transcodedFilePath);
+      fs.remove(transcodedFilePath)
+        .catch(err => logger.error('移除临时文件失败：', err));
+    } catch (error) {
+      buffer = await fs.readFile(filePath);
+    }
+  }else{
+    buffer = await fs.readFile(filePath);
+  }
+
   let session: ClientHttp2Session;
   return (async () => {
     // 请求流
@@ -276,7 +287,7 @@ async function receiveTrasciptionResult(type: string, stream: any): Promise<any>
           }
           if(type == "voice")
             {
-              logger.warn(`data:`, data.hex[0]);
+              // logger.warn(`data:`, data.hex[0]);
               text += data.hex[0];
             }
         }

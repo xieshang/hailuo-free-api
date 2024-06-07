@@ -43,8 +43,8 @@ export default {
         const tokens = core.tokenSplit(request.headers.authorization);
         // 随机挑选一个token
         const token = _.sample(tokens);
-        logger.info("tokens:", tokens);
-        logger.info("token:", token);
+        // logger.info("tokens:", tokens);
+        // logger.info("token:", token);
         if(!request.files['file'] && !request.body["file"])
           throw new Error('File field is not set');
         let tmpFilePath;
