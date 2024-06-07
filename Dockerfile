@@ -9,7 +9,8 @@ RUN yarn install && \
 
 FROM node:lts-alpine
 
-RUN echo "https://mirror.reenigne.net/alpine/edge/community/" >> /etc/apk/repositories && \
+RUN rm -f /etc/apk/repositories && \
+echo "https://mirror.reenigne.net/alpine/edge/community/" >> /etc/apk/repositories && \
 echo "https://mirror.reenigne.net/alpine/edge/main/" >> /etc/apk/repositories && \
 echo "https://mirror.reenigne.net/alpine/edge/testing/" >> /etc/apk/repositories && \
 echo "https://mirror.reenigne.net/alpine/v3.19/main/" >> /etc/apk/repositories && \
