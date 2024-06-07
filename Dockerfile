@@ -9,7 +9,12 @@ RUN yarn install && \
 
 FROM node:lts-alpine
 
-RUN apk add --no-cache sox
+RUN echo "https://mirror.reenigne.net/alpine/edge/community/" >> /etc/apk/repositories && \
+echo "https://mirror.reenigne.net/alpine/edge/main/" >> /etc/apk/repositories && \
+echo "https://mirror.reenigne.net/alpine/edge/testing/" >> /etc/apk/repositories && \
+echo "https://mirror.reenigne.net/alpine/v3.19/main/" >> /etc/apk/repositories && \
+echo "https://mirror.reenigne.net/alpine/v3.19/community/" >> /etc/apk/repositories && \
+apk add --no-cache sox
 
 COPY --from=BUILD_IMAGE /app/configs /app/configs
 COPY --from=BUILD_IMAGE /app/package.json /app/package.json
