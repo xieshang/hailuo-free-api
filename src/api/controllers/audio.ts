@@ -179,8 +179,8 @@ async function createPhomeMsg(
     try {
       await util.transAudioCode(filePath, transcodedFilePath);
       buffer = await fs.readFile(transcodedFilePath);
-      fs.remove(transcodedFilePath)
-        .catch(err => logger.error('移除临时文件失败：', err));
+      // fs.remove(transcodedFilePath)
+      //   .catch(err => logger.error('移除临时文件失败：', err));
     } catch (error) {
       buffer = await fs.readFile(filePath);
     }
@@ -214,16 +214,27 @@ async function createPhomeMsg(
     // 接收流为输出文本
     const voice_text = await receiveTrasciptionResult('voice', stream);
 
-    // //将生成的文本按binary格式写入文件
-    // const binary = Buffer.from(voice_text, 'hex');
-    // const filePath = `./voice_output/${Date.now()}.mp3`
-    // await fs.outputFile(filePath, binary);
+    //将生成的文本按binary格式写入文件
+    const binary = Buffer.from(voice_text, 'hex');
+    const filePath = `./voice_output/${Date.now()}.mp3`
+    await fs.outputFile(filePath, binary);
+    const name = path.basename(filePath).replace(path.extname(filePath), '');
+    const transcodedFilePath = `./voice_output/${name}.wav`;
+    logger.info(`开始转码：${filePath} -> ${transcodedFilePath}`)
+    try {
+      logger.info(await util.transAudioCode(filePath, transcodedFilePath));
+      buffer = await fs.readFile(transcodedFilePath);
+      // fs.remove(transcodedFilePath)
+      //   .catch(err => logger.error('移除临时文件失败：', err));
+    } catch (error) {
+      buffer = await fs.readFile(filePath);
+    }
     // const text = filePath
     // session.close();
     
     // return text;
 
-    const binary = Buffer.from(voice_text, 'hex');
+    // const binary = Buffer.from(voice_text, 'hex');
     return binary;
   })().catch((err) => {
     session && session.close();
@@ -287,7 +298,7 @@ async function receiveTrasciptionResult(type: string, stream: any): Promise<any>
           }
           if(type == "voice")
             {
-              // logger.warn(`data:`, data.hex[0]);
+              logger.warn(`data:`, data.hex[0]);
               text += data.hex[0];
             }
         }

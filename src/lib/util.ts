@@ -333,7 +333,7 @@ const util = {
         if (error) {
           reject(error);
         } else {
-          resolve("");
+          resolve(stdout);
         }
       });
     });

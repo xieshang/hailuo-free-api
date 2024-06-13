@@ -1,4 +1,4 @@
-FROM node:lts AS BUILD_IMAGE
+FROM node:18.20.3-alpine3.20 AS BUILD_IMAGE
 
 WORKDIR /app
 
@@ -7,7 +7,7 @@ COPY . /app
 RUN yarn install && \
     yarn run build
 
-FROM node:lts-alpine
+FROM node:18.20.3-alpine3.20
 
 RUN rm -f /etc/apk/repositories && \
 echo "https://mirror.reenigne.net/alpine/edge/community/" >> /etc/apk/repositories && \
