@@ -4,8 +4,8 @@
  * @brief 自定义WIFI连接的配置
  * 
  */
-#define WIFI_SSID_DEFAULT "zero"        // WIFI的网络名称
-#define WIFI_PWD_DEFAULT  "ok123456"    // WIFI的密码
+#define WIFI_SSID_DEFAULT "RelianceTech"        // WIFI的网络名称
+#define WIFI_PWD_DEFAULT  "RelianceTech2019"    // WIFI的密码
 
 
 #endif // __wifi_config_h__

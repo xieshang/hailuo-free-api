@@ -174,7 +174,7 @@ async function createPhomeMsg(
   let buffer;
   if(1)
   {
-    const transcodedFilePath = `tmp/${name}_transcodeed.mp3`;
+    const transcodedFilePath = `tmp/${Date.now()}_record.mp3`;
     logger.info(`开始转码：${filePath} -> ${transcodedFilePath}`)
     try {
       await util.transAudioCode(filePath, transcodedFilePath);
@@ -216,7 +216,7 @@ async function createPhomeMsg(
 
     //将生成的文本按binary格式写入文件
     const binary = Buffer.from(voice_text, 'hex');
-    const filePath = `./voice_output/${Date.now()}.mp3`
+    const filePath = `./voice_output/${Date.now()}_bot.mp3`
     await fs.outputFile(filePath, binary);
     const name = path.basename(filePath).replace(path.extname(filePath), '');
     const transcodedFilePath = `./voice_output/${name}.wav`;

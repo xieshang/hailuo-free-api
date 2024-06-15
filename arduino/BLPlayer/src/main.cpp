@@ -16,6 +16,12 @@
 #include "AudioGeneratorAAC.h"
 #include "AudioGeneratorMP3.h"
 #include "improv/improv_serial.h"
+#include "esp_sntp.h"
+#include "I2S.h"
+#include "sd_card.h"
+// #include "tft.h"
+#include "Wav.h"
+#include "http.h"
 
 // #define HAVE_USE_MCUMON
 #include "mcumon.h"
@@ -27,6 +33,16 @@
 typedef AudioFileSourceBufferEx       MyAudioFileSourceBuffer;
 typedef AudioFileSourceHTTPStreamV2   MyHttpFileSource;
 
+const char *ntpServer1 = "pool.ntp.org";
+const char *ntpServer2 = "time.nist.gov";
+const long gmtOffset_sec = 60;
+const int daylightOffset_sec = 3600;
+const char *time_zone = "CST-8";  // change to your time zone
+
+uint64_t recording = 0;
+char recording_file_path[50] = {0};
+char recording_temp_file_path[] = "/voice/tmp_record.wav";
+File record_file_handle, record_file_handle_temp;
 
 McuMonitor __monitor;
 
@@ -271,7 +287,7 @@ class A2DSourceOutput : public AudioOutput
       float audio_freq = (_poped-_ts_poped) / (ts_timeout/1000.0f);
       if(audio_freq < 32000 && _pushed - _poped < 512 && _begined == true){
         _ts_wait_full = millis() + 1000;
-        Serial.printf(" _ts_wait_fill_samples 1second ... ");
+        Serial.println(" _ts_wait_fill_samples 1second ... ");
       }
       return snprintf(message, message_len, ", audio: (%5.0fhz, %4d)", audio_freq, _pushed - _poped);
     }
@@ -457,6 +473,27 @@ static void improv_device_info(char firmware[16], char chip[16], char name[16], 
   sprintf(version,"%d", 20230710);
 }
 
+void printLocalTime() {
+  struct tm timeinfo;
+  if (!getLocalTime(&timeinfo)) {
+    Serial.println("No time available (yet)");
+    return;
+  }
+  Serial.println(&timeinfo, "%A, %B %d %Y %H:%M:%S");
+}
+
+// Callback function (gets called when time adjusts via NTP)
+void timeavailable(struct timeval *t) {
+  Serial.println("Got time adjustment from NTP!");
+  printLocalTime();
+}
+
+
+/*
+  初始化
+
+
+ */
 void setup()
 {
   improv_callbacks_t cb = {
@@ -466,9 +503,31 @@ void setup()
   };
 
   uint64_t ts_expired = 0;
+  #define gpio_vcc_ctrl 14
+  pinMode(gpio_vcc_ctrl, OUTPUT); //使能VCC_CTRL管脚，使能VCC_3.3V。
+  digitalWrite(gpio_vcc_ctrl, LOW);
   Serial.begin(115200);
-  delay(2000);
+  delay(1000);
   Serial.printf("version: %s, build: %s\n", BUILD_VERSION, BUILD_TIME);
+  // Serial.printf("init tft\n");
+  // tft_init();
+  Serial.printf("init i2s\n");
+  I2S_Init(I2S_NUM_0, I2S_MODE_RX, I2S_BITS_PER_SAMPLE_16BIT, 64);
+  Serial.printf("init sdcard\n");
+  uint8_t init_err = 3;
+  while(init_err)
+  {
+    init_err = SD_init();
+    if(init_err)
+    {
+      Serial.printf("init sdcard err: %d\n", init_err);
+    }else{
+      createDir(SD, "/voice");
+      break;
+    }
+    Serial.printf("wait for sdcard\n");
+    delay(1000);
+  }
   NVSetting::load_setting();
   ImprovSerial::begin(&cb);
 
@@ -495,8 +554,12 @@ void setup()
     ESP.restart();
   }else{
     Serial.println("Connected");
+    Serial.println(WiFi.localIP());
   }
 
+  sntp_set_time_sync_notification_cb(timeavailable);
+  // esp_sntp_servermode_dhcp(1);  // (optional)
+  configTime(gmtOffset_sec, daylightOffset_sec, ntpServer1, ntpServer2);
   XNetController::setup(main_xnet_message_handler);
  
   OUTPUT_SETPIN(output);
@@ -543,9 +606,12 @@ void setup()
   wait_improv_timeout = millis() + 60000;
 }
 
+
 void loop() {
   static uint64_t ts_button = 0, ts_button_down = 0, ts_for_next_music = 0, ts_for_utc = 0, ts_wifi_check = 0;
   static uint64_t ts_auto_digital = 0;
+  char audio_buff[64];
+  size_t audio_sz = 0;
 
   uint64_t ts_now = millis();
   _ts_last_loop_tick = ts_now;
@@ -572,6 +638,13 @@ void loop() {
     XNetController::req_utc();
   }
 
+  // 录音
+  if(recording){
+    i2s_read(I2S_NUM_0, (char*)audio_buff, 64, &audio_sz, 0);
+    record_file_handle_temp.write((const uint8_t*)audio_buff, audio_sz);
+    // Serial.printf("write data %d ok, left: %d\n", audio_sz, record_file_handle_temp.available());
+  }
+
   if(ts_button < ts_now){
     button.loop();
     ts_button = ts_now + 50;    
@@ -582,16 +655,58 @@ void loop() {
   if(button.isReleased() && ts_button_down != 0){
     uint32_t ts_hold = ts_now - ts_button_down;
     ts_button_down = 0;
-    if(ts_hold < 200){
-      Serial.println("nothing to do 0 ...");
-    }else if(ts_hold < 1500){
+
+    if(ts_hold < 1500){
+      if(recording == 0)
+      {
+        recording = millis();  //标记开始录音并生成文件名
+        time_t now = time(nullptr);
+        struct tm timeinfo;
+        localtime_r(&now, &timeinfo);
+        sprintf(recording_file_path, "/voice/%d-%02d-%02d_%02d-%02d-%02d_record.wav", timeinfo.tm_year + 1900, timeinfo.tm_mon + 1, timeinfo.tm_mday, timeinfo.tm_hour, timeinfo.tm_min, timeinfo.tm_sec);
+        deleteFile(SD, recording_temp_file_path);
+        record_file_handle_temp = SD.open(recording_temp_file_path, FILE_WRITE);
+        Serial.printf("start recording to %s\n", recording_file_path);
+      }else{
+        //临时文件转移到正式文件并加上wav头
+        record_file_handle_temp.close();
+        record_file_handle_temp = SD.open(recording_temp_file_path, FILE_READ);
+        Serial.printf("%s size: %d\n", recording_temp_file_path, record_file_handle_temp.size());
+        record_file_handle = SD.open(recording_file_path, FILE_WRITE);
+        byte header[64];
+        CreateWavHeader(header, record_file_handle_temp.size());
+        record_file_handle.write(header, sizeof(header));
+        Serial.printf("write header ok, start copy data\n");
+        while(record_file_handle_temp.available()){
+          uint8_t buff[1024];
+          size_t sz = record_file_handle_temp.read(buff, sizeof(buff));
+          record_file_handle.write(buff, sz);
+          // Serial.printf("write data %d ok, left: %d\n", sz, record_file_handle_temp.available());
+        }
+        record_file_handle_temp.close();
+        record_file_handle.close();
+        
+        remove(recording_temp_file_path);
+        Serial.printf("end recording to %s\n", recording_file_path);
+        Serial.printf("time: %d ms\n", millis() - recording);
+        recording = 0;  //标记结束录音
+
+        record_file_handle = SD.open(recording_file_path, FILE_READ, false);
+        #if home
+          if(http_post_audio_stream("http://192.168.1.43:5000/phone_msg?model=hailuo&response_format=json", file, file->getSize(), recording_file_path))
+        #else
+          if(http_post_audio_stream("http://192.168.0.5:5000/phone_msg?model=hailuo&response_format=json", &record_file_handle, record_file_handle.size(), recording_file_path))
+        #endif
+        {
+          Serial.printf("post success: %s\n", recording_file_path);
+        }
+      }
+    }else if(ts_hold < 3000){
       memset(digital_token, 0, sizeof(digital_token));
       strcpy(digital_token, "xs");
       digital_token[sizeof(digital_token)-1] = 0;
       digital_token_sz = strlen("xs");
       Serial.printf("local sound effect: %s\n", digital_token);
-    }else if(ts_hold < 3000){
-      Serial.println("nothing to do 1 ...");
     }else if(ts_hold < 10000){
       XNetController::req_digital_access();
       Serial.println("refresh access token ...");

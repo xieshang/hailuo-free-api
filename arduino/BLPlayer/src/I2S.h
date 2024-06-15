@@ -4,9 +4,9 @@
 #include "driver/i2s.h"
 #include "esp_system.h"
 #define SAMPLE_RATE (44100)
-#define PIN_I2S_BCLK 2
-#define PIN_I2S_WS 42
-#define PIN_I2S_DIN 1
+#define PIN_I2S_BCLK 22
+#define PIN_I2S_WS 2
+#define PIN_I2S_DIN 15
 #define PIN_I2S_DOUT 41
 
 // This I2S specification : 

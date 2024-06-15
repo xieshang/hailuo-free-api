@@ -8,7 +8,9 @@
 #include <ArduinoJson.h>
 #include "http.h"
 #include "esp_sntp.h"
+#include "usbmsc.h"
 
+#define home  0
 
 HTTPClient http_client;
 
@@ -16,17 +18,22 @@ const char *ntpServer1 = "pool.ntp.org";
 const char *ntpServer2 = "time.nist.gov";
 const long gmtOffset_sec = 3600;
 const int daylightOffset_sec = 3600;
-const char *time_zone = "CET-1CEST,M3.5.0,M10.5.0/3";  // TimeZone rule for Europe/Rome including daylight adjustment rules (optional)
+const char *time_zone = "CST-8";  // TimeZone rule for Europe/Rome including daylight adjustment rules (optional)
 
 
 // 1. Replace with your network credentials
-const char* ssid = "XSC-2.4";
-const char* password = "84940782";
+#if home
+  const char* ssid = "XSC-2.4";
+  const char* password = "84940782";
+#else
+  const char* ssid = "RelianceTech";
+  const char* password = "RelianceTech2019";
+#endif
+
 //按键0定义
 #define BUTTON_PIN  0
 
 const int record_time = 2;  // second
-const char filename[] = "/sound.wav";
 
 const int headerSize = 44;
 const int waveDataSize = record_time * 88000;
@@ -61,9 +68,19 @@ void timeavailable(struct timeval *t) {
 
 void setup() {
   Serial.begin(115200);
-  Serial.println("System start,wait key");
-  if (!SD_MMC_Init()) Serial.println("SD begin failed");
-  Serial.println("SD Card init ok");
+  Serial.setDebugOutput(true);
+  while(1)
+  {
+    if (!SD_MMC_Init())
+    {
+      Serial.println("SD begin failed");
+      delay(10000);
+    }else{
+      Serial.println("SD Card init ok");
+      createDir(SD_MMC, "/voice");
+      break;
+    }
+  }
   I2S_Init(I2S_NUM_0, I2S_MODE_RX, I2S_BITS_PER_SAMPLE_16BIT, 1024);
   I2S_Init(I2S_NUM_1, I2S_MODE_TX, I2S_BITS_PER_SAMPLE_16BIT, 1024);
   Serial.println("I2S init ok");
@@ -94,24 +111,21 @@ void loop() {
     delay(20);
     if(digitalRead(BUTTON_PIN)==LOW){
       File file;
-      
-      file = SD_MMC.open(filename, FILE_READ);
-      
-      #if 0
-        if(file)
+      char filename[128] = "/voice/2024-06-14_17-40-25_bot.wav";
+      #if 1
+        file = SD_MMC.open(filename, FILE_READ);
+        Serial.printf("%s is exsit.start playing\n", filename);
+        while(file.available())
         {
-          Serial.printf("%s is exsit.\n", filename);
-          while(file.available())
-          {
-            char buff[1024] = {0};
-            file.readBytes(buff, sizeof(buff));
-            I2S_Write(buff, sizeof(buff));
-          }
-          file.close();
-          return;
+          char buff[1024] = {0};
+          file.readBytes(buff, sizeof(buff));
+          I2S_Write(buff, sizeof(buff));
         }
+        file.close();
+        Serial.println("play end");
+        return;
       #else
-        deleteFile(SD_MMC, filename);
+        // deleteFile(SD_MMC, filename);
       #endif
 
       char record_path[128];
@@ -123,10 +137,10 @@ void loop() {
       file = SD_MMC.open(record_path, FILE_WRITE);
       if (!file)
       {
-        Serial.printf("sd open fail: %s\n", filename);
+        Serial.printf("record open fail: %s\n", record_path);
         return;
       }
-      Serial.printf("sd open ok: %s\n", filename);
+      Serial.printf("record open ok: %s\n", record_path);
       uint32_t time1 = millis();
       int record_len = 0;
       record_len = audio_record(waveData + headerSize, waveDataSize);
@@ -147,9 +161,11 @@ void loop() {
       file.close();
       Serial.println("finish");
       Serial.printf("time: %d ms\n", millis() - time1);
-      
-      char filename[128] = {0};
-      if(http_post_audio_buff("http://192.168.1.42:5000/phone_msg?model=hailuo&response_format=json", waveData, record_len, filename))
+      #if home
+        if(http_post_audio_buff("http://192.168.1.43:5000/phone_msg?model=hailuo&response_format=json", waveData, record_len, filename))
+      #else
+        if(http_post_audio_buff("http://192.168.0.5:5000/phone_msg?model=hailuo&response_format=json", waveData, record_len, filename))
+      #endif
       {
         Serial.printf("post success: %s\n", filename);
         File file = SD_MMC.open(filename, FILE_READ);
@@ -159,7 +175,7 @@ void loop() {
           char buff[1024] = {0};
           while (file.available()) {
             file.readBytes(buff, sizeof(buff));
-            Serial.println(buff);
+            // Serial.println(buff);
             I2S_Write(buff, sizeof(buff));
           }
           file.close();

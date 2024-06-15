@@ -52,21 +52,25 @@ void I2S_Init(i2s_port_t I2S_NUM, i2s_mode_t MODE, i2s_bits_per_sample_t BPS, ui
   if (MODE == I2S_MODE_RX || MODE == I2S_MODE_TX) {
     Serial.printf("using I2S_MODE: %d\n", MODE);
     i2s_pin_config_t pin_config;
-    pin_config.bck_io_num = PIN_I2S_BCLK;
-    pin_config.ws_io_num = PIN_I2S_WS;
-    pin_config.mck_io_num = -1;
     if (MODE == I2S_MODE_RX) {
       I2S_READ_PORT = I2S_NUM;
+      pin_config.bck_io_num = PIN_I2S_BCLK_MIC;
+      pin_config.ws_io_num = PIN_I2S_WS_MIC;
+      pin_config.mck_io_num = -1;
       pin_config.data_out_num = I2S_PIN_NO_CHANGE;
-      pin_config.data_in_num = PIN_I2S_DIN;
+      pin_config.data_in_num = PIN_I2S_DIN_MIC;
     } 
     else if (MODE == I2S_MODE_TX) {
       I2S_WRITE_PORT = I2S_NUM;
-      pin_config.data_out_num = PIN_I2S_DOUT;
+      pin_config.bck_io_num = PIN_I2S_BCLK_HORN;
+      pin_config.ws_io_num = PIN_I2S_WS_HORN;
+      pin_config.mck_io_num = -1;
+      pin_config.data_out_num = PIN_I2S_DOUT_HORN;
       pin_config.data_in_num = I2S_PIN_NO_CHANGE;
     }
 
     i2s_set_pin(I2S_NUM, &pin_config);
+    i2s_start(I2S_NUM);
     // i2s_set_clk(I2S_NUM_0, SAMPLE_RATE, BPS, I2S_CHANNEL_STEREO);
   }
 }
