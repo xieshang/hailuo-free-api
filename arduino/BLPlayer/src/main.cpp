@@ -511,6 +511,7 @@ void setup()
   Serial.printf("version: %s, build: %s\n", BUILD_VERSION, BUILD_TIME);
   // Serial.printf("init tft\n");
   // tft_init();
+  
   Serial.printf("init i2s\n");
   I2S_Init(I2S_NUM_0, I2S_MODE_RX, I2S_BITS_PER_SAMPLE_16BIT, 64);
   Serial.printf("init sdcard\n");
@@ -528,6 +529,7 @@ void setup()
     Serial.printf("wait for sdcard\n");
     delay(1000);
   }
+  
   NVSetting::load_setting();
   ImprovSerial::begin(&cb);
 
@@ -556,12 +558,15 @@ void setup()
     Serial.println("Connected");
     Serial.println(WiFi.localIP());
   }
-
+  
+  //初始化NTP
   sntp_set_time_sync_notification_cb(timeavailable);
   // esp_sntp_servermode_dhcp(1);  // (optional)
   configTime(gmtOffset_sec, daylightOffset_sec, ntpServer1, ntpServer2);
+
+  //注册XNet消息处理函数
   XNetController::setup(main_xnet_message_handler);
- 
+  
   OUTPUT_SETPIN(output);
   output.SetGain(0.6);
   audioLogger = &Serial;
@@ -693,13 +698,14 @@ void loop() {
 
         record_file_handle = SD.open(recording_file_path, FILE_READ, false);
         #if home
-          if(http_post_audio_stream("http://192.168.1.43:5000/phone_msg?model=hailuo&response_format=json", file, file->getSize(), recording_file_path))
+          if(http_post_audio_stream("http://192.168.1.42:5000/phone_msg?model=hailuo&response_format=json", &record_file_handle, record_file_handle.size(), recording_file_path))
         #else
           if(http_post_audio_stream("http://192.168.0.5:5000/phone_msg?model=hailuo&response_format=json", &record_file_handle, record_file_handle.size(), recording_file_path))
         #endif
         {
           Serial.printf("post success: %s\n", recording_file_path);
         }
+        record_file_handle.close();
       }
     }else if(ts_hold < 3000){
       memset(digital_token, 0, sizeof(digital_token));

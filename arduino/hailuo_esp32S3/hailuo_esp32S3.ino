@@ -9,9 +9,11 @@
 #include "http.h"
 #include "esp_sntp.h"
 #include "usbmsc.h"
+#include "Audio.h"
 
 #define home  0
 
+Audio audio;
 HTTPClient http_client;
 
 const char *ntpServer1 = "pool.ntp.org";
@@ -33,22 +35,11 @@ const char *time_zone = "CST-8";  // TimeZone rule for Europe/Rome including day
 //按键0定义
 #define BUTTON_PIN  0
 
-const int record_time = 2;  // second
+uint64_t recording = 0;
+char recording_file_path[50] = {0};
+char recording_temp_file_path[] = "/voice/tmp_record.wav";
+File record_file_handle, record_file_handle_temp;
 
-const int headerSize = 44;
-const int waveDataSize = record_time * 88000;
-const int numCommunicationData = 8000;
-const int numPartWavData = numCommunicationData/4;
-// char communicationData[numCommunicationData];
-// char partWavData[numPartWavData];
-char waveData[waveDataSize] = {0};
-// Audio audio;
-
-uint32_t audio_record(char* waveData_t, uint32_t waveDataSize_t)
-{
-  waveDataSize_t = I2S_Read(waveData_t, waveDataSize_t);
-  return waveDataSize_t;
-}
 
 void printLocalTime() {
   struct tm timeinfo;
@@ -82,7 +73,10 @@ void setup() {
     }
   }
   I2S_Init(I2S_NUM_0, I2S_MODE_RX, I2S_BITS_PER_SAMPLE_16BIT, 1024);
-  I2S_Init(I2S_NUM_1, I2S_MODE_TX, I2S_BITS_PER_SAMPLE_16BIT, 1024);
+  audio.setPinout(PIN_I2S_BCLK_HORN, PIN_I2S_WS_HORN, PIN_I2S_DOUT_HORN);
+  audio.setVolume(21); // default 0...21
+  Serial.printf("i2s prot: %d\n", audio.getI2sPort());
+  // I2S_Init(I2S_NUM_1, I2S_MODE_TX, I2S_BITS_PER_SAMPLE_16BIT, 1024);
   Serial.println("I2S init ok");
   
   WiFi.mode(WIFI_STA);
@@ -106,83 +100,62 @@ void setup() {
 
 }
 
+char* audio_buff = NULL;
+
 void loop() {
   if(digitalRead(BUTTON_PIN)==LOW){
     delay(20);
     if(digitalRead(BUTTON_PIN)==LOW){
-      File file;
-      char filename[128] = "/voice/2024-06-14_17-40-25_bot.wav";
-      #if 1
-        file = SD_MMC.open(filename, FILE_READ);
-        Serial.printf("%s is exsit.start playing\n", filename);
-        while(file.available())
-        {
-          char buff[1024] = {0};
-          file.readBytes(buff, sizeof(buff));
-          I2S_Write(buff, sizeof(buff));
-        }
-        file.close();
-        Serial.println("play end");
-        return;
-      #else
-        // deleteFile(SD_MMC, filename);
-      #endif
-
-      char record_path[128];
-      time_t now = time(nullptr);
-      struct tm timeinfo;
-      localtime_r(&now, &timeinfo);
-      sprintf(record_path, "/voice/%d-%02d-%02d_%02d-%02d-%02d_record.mp3", timeinfo.tm_year + 1900, timeinfo.tm_mon + 1, timeinfo.tm_mday, timeinfo.tm_hour, timeinfo.tm_min, timeinfo.tm_sec);
-
-      file = SD_MMC.open(record_path, FILE_WRITE);
-      if (!file)
+      if(recording == 0)
       {
-        Serial.printf("record open fail: %s\n", record_path);
-        return;
-      }
-      Serial.printf("record open ok: %s\n", record_path);
-      uint32_t time1 = millis();
-      int record_len = 0;
-      record_len = audio_record(waveData + headerSize, waveDataSize);
-      CreateWavHeader((byte*)waveData, record_len);
-      
-      file.write((const byte*)waveData, record_len);
-
-      // for (int j = 0; j < waveDataSize/numPartWavData; ++j) {
-      //   I2S_Read(communicationData, numCommunicationData);
-      //   file.write((const byte*)communicationData, numCommunicationData);
-      //   Serial.println(j);
-      //   // for (int i = 0; i < numCommunicationData/8; ++i) {
-      //   //   partWavData[2*i] = communicationData[8*i + 2];
-      //   //   partWavData[2*i + 1] = communicationData[8*i + 3];
-      //   // }
-      //   // file.write((const byte*)partWavData, numPartWavData);
-      // }
-      file.close();
-      Serial.println("finish");
-      Serial.printf("time: %d ms\n", millis() - time1);
-      #if home
-        if(http_post_audio_buff("http://192.168.1.43:5000/phone_msg?model=hailuo&response_format=json", waveData, record_len, filename))
-      #else
-        if(http_post_audio_buff("http://192.168.0.5:5000/phone_msg?model=hailuo&response_format=json", waveData, record_len, filename))
-      #endif
-      {
-        Serial.printf("post success: %s\n", filename);
-        File file = SD_MMC.open(filename, FILE_READ);
-        if (file)
-        {
-          // 每次读1024字节
-          char buff[1024] = {0};
-          while (file.available()) {
-            file.readBytes(buff, sizeof(buff));
-            // Serial.println(buff);
-            I2S_Write(buff, sizeof(buff));
-          }
-          file.close();
+        recording = millis();  //标记开始录音并生成文件名
+        time_t now = time(nullptr);
+        struct tm timeinfo;
+        localtime_r(&now, &timeinfo);
+        sprintf(recording_file_path, "/voice/%d-%02d-%02d_%02d-%02d-%02d_record.wav", timeinfo.tm_year + 1900, timeinfo.tm_mon + 1, timeinfo.tm_mday, timeinfo.tm_hour, timeinfo.tm_min, timeinfo.tm_sec);
+        deleteFile(SD, recording_temp_file_path);
+        record_file_handle_temp = SD.open(recording_temp_file_path, FILE_WRITE);
+        Serial.printf("start recording to %s\n", recording_file_path);
+      }else{
+        recording = 0;  //标记结束录音
+        free(audio_buff);
+        audio_buff = NULL;
+        //临时文件转移到正式文件并加上wav头
+        record_file_handle_temp.close();
+        record_file_handle_temp = SD.open(recording_temp_file_path, FILE_READ);
+        Serial.printf("%s size: %d\n", recording_temp_file_path, record_file_handle_temp.size());
+        record_file_handle = SD.open(recording_file_path, FILE_WRITE);
+        char header[44];
+        CreateWavHeader(header, record_file_handle_temp.size());
+        record_file_handle.write((const uint8_t*)header, sizeof(header));
+        Serial.printf("write header ok, start copy data\n");
+        uint8_t* buff = (uint8_t*)malloc(1024);
+        while(record_file_handle_temp.available()){
+          size_t sz = record_file_handle_temp.read(buff, sizeof(buff));
+          record_file_handle.write(buff, sz);
+          // Serial.printf("write data %d ok, left: %d\n", sz, record_file_handle_temp.available());
         }
-      }
+        free(buff);
+        buff = NULL;
+        record_file_handle_temp.close();
+        record_file_handle.close();
+        
+        remove(recording_temp_file_path);
+        Serial.printf("end recording to %s\n", recording_file_path);
+        Serial.printf("time: %d ms\n", millis() - recording);
 
-      Serial.println("post finish");
+        record_file_handle = SD.open(recording_file_path, FILE_READ, false);
+        #if home
+          if(http_post_audio_stream("http://192.168.1.42:5000/phone_msg?model=hailuo&response_format=json", &record_file_handle, record_file_handle.size(), recording_file_path))
+        #else
+          if(http_post_audio_stream("http://192.168.0.5:5000/phone_msg?model=hailuo&response_format=json", &record_file_handle, record_file_handle.size(), recording_file_path))
+        #endif
+        {
+          Serial.printf("post result: %s\n", recording_file_path);
+        }
+        record_file_handle.close();
+        recording = 0;  //标记结束录音
+      }
     }
   }
 }

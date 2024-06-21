@@ -168,13 +168,14 @@ async function createPhomeMsg(
   model = MODEL_NAME,
   filePath: string,
   token: string,
-  retryCount = 0
+  return_types: string,
+  retryCount = 0,
 ) {
   const name = path.basename(filePath).replace(path.extname(filePath), '');
   let buffer;
   if(1)
   {
-    const transcodedFilePath = `tmp/${Date.now()}_record.mp3`;
+    const transcodedFilePath = `./tmp/${Date.now()}_record.mp3`;
     logger.info(`开始转码：${filePath} -> ${transcodedFilePath}`)
     try {
       await util.transAudioCode(filePath, transcodedFilePath);
@@ -214,28 +215,41 @@ async function createPhomeMsg(
     // 接收流为输出文本
     const voice_text = await receiveTrasciptionResult('voice', stream);
 
+    if(voice_text.length == 0)
+      {
+        stream.close();
+        return null;
+      }
     //将生成的文本按binary格式写入文件
     const binary = Buffer.from(voice_text, 'hex');
-    const filePath = `./voice_output/${Date.now()}_bot.mp3`
+    const filePath = `./voice_temp/${Date.now()}_bot.mp3`
     await fs.outputFile(filePath, binary);
-    const name = path.basename(filePath).replace(path.extname(filePath), '');
-    const transcodedFilePath = `./voice_output/${name}.wav`;
-    logger.info(`开始转码：${filePath} -> ${transcodedFilePath}`)
-    try {
-      logger.info(await util.transAudioCode(filePath, transcodedFilePath));
-      buffer = await fs.readFile(transcodedFilePath);
-      // fs.remove(transcodedFilePath)
-      //   .catch(err => logger.error('移除临时文件失败：', err));
-    } catch (error) {
-      buffer = await fs.readFile(filePath);
-    }
+
+
     // const text = filePath
     // session.close();
     
     // return text;
 
     // const binary = Buffer.from(voice_text, 'hex');
-    return binary;
+    if(return_types == "voice")
+    {
+      const name = path.basename(filePath).replace(path.extname(filePath), '');
+      const transcodedFilePath = `./voice_temp/${name}.wav`;
+      logger.info(`开始转码：${filePath} -> ${transcodedFilePath}`)
+      try {
+        logger.info(await util.transAudioCode(filePath, transcodedFilePath));
+        // fs.remove(transcodedFilePath)
+        //   .catch(err => logger.error('移除临时文件失败：', err));
+      } catch (error) {
+        buffer = await fs.readFile(filePath);
+      }
+      buffer = await fs.readFile(transcodedFilePath);
+      return binary;
+    }else{
+      logger.info(`机器人语音返回：${filePath}`);
+      return filePath;
+    }
   })().catch((err) => {
     session && session.close();
     session = null;
@@ -244,7 +258,7 @@ async function createPhomeMsg(
       logger.warn(`Try again after ${RETRY_DELAY / 1000}s...`);
       return (async () => {
         await new Promise((resolve) => setTimeout(resolve, RETRY_DELAY));
-        return createPhomeMsg(model, filePath, token, retryCount + 1);
+        return createPhomeMsg(model, filePath, token, return_types, retryCount + 1);
       })();
     }
     throw err;

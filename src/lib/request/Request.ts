@@ -31,12 +31,26 @@ export default class Request {
     body: any;
     /** 上传的文件 */
     files: any[];
+    /** 上传的二进制数据 */
+    binary: any;
     /** 客户端IP地址 */
     remoteIP: string | null;
     /** 请求接受时间戳（毫秒） */
     time: number;
 
     constructor(ctx, options: RequestOptions = {}) {
+        const chunks = [];
+        logger.info('~~~~', ctx.req.headers['content-type']);
+        if(ctx.req.headers['content-type'] === 'application/octet-stream' || ctx.req.headers['content-type'] === 'audio/wave') {
+            ctx.req.on('data', (chunk) => {
+                chunks.push(chunk);
+                logger.debug(`Received request data chunk: ${chunk.length} bytes`);
+              });
+              ctx.req.on('end', () => {
+                this.binary = Buffer.concat(chunks);
+                logger.debug('Received request data end, ', this.binary.length);
+              });
+        }
         const { time } = options;
         this.method = ctx.request.method;
         this.url = ctx.request.url;

@@ -1,15 +1,15 @@
 #include "Wav.h"
 
-void CreateWavHeader(byte* header, int waveDataSize){
+void CreateWavHeader(char* header, int waveDataSize){
   header[0] = 'R';
   header[1] = 'I';
   header[2] = 'F';
   header[3] = 'F';
   unsigned int fileSizeMinus8 = waveDataSize + 44 - 8;
-  header[4] = (byte)(fileSizeMinus8 & 0xFF);
-  header[5] = (byte)((fileSizeMinus8 >> 8) & 0xFF);
-  header[6] = (byte)((fileSizeMinus8 >> 16) & 0xFF);
-  header[7] = (byte)((fileSizeMinus8 >> 24) & 0xFF);
+  header[4] = (char)(fileSizeMinus8 & 0xFF);
+  header[5] = (char)((fileSizeMinus8 >> 8) & 0xFF);
+  header[6] = (char)((fileSizeMinus8 >> 16) & 0xFF);
+  header[7] = (char)((fileSizeMinus8 >> 24) & 0xFF);
   header[8] = 'W';
   header[9] = 'A';
   header[10] = 'V';
@@ -42,9 +42,9 @@ void CreateWavHeader(byte* header, int waveDataSize){
   header[37] = 'a';
   header[38] = 't';
   header[39] = 'a';
-  header[40] = (byte)(waveDataSize & 0xFF);
-  header[41] = (byte)((waveDataSize >> 8) & 0xFF);
-  header[42] = (byte)((waveDataSize >> 16) & 0xFF);
-  header[43] = (byte)((waveDataSize >> 24) & 0xFF);
+  header[40] = (char)(waveDataSize & 0xFF);
+  header[41] = (char)((waveDataSize >> 8) & 0xFF);
+  header[42] = (char)((waveDataSize >> 16) & 0xFF);
+  header[43] = (char)((waveDataSize >> 24) & 0xFF);
 }
 
