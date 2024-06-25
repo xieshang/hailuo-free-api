@@ -4,13 +4,14 @@
 #include "driver/i2s.h"
 #include "esp_system.h"
 #define SAMPLE_RATE (44100)
-#define PIN_I2S_BCLK_MIC 2
-#define PIN_I2S_WS_MIC 42
-#define PIN_I2S_DIN_MIC 1
+#define PIN_I2S_BCLK_MIC 14
+#define PIN_I2S_WS_MIC 13
+#define PIN_I2S_DIN_MIC 21
 
-#define PIN_I2S_BCLK_HORN 2
-#define PIN_I2S_WS_HORN 42
-#define PIN_I2S_DOUT_HORN 41
+#define PIN_I2S_BCLK_HORN 48
+#define PIN_I2S_WS_HORN 47
+#define PIN_I2S_DOUT_HORN 45
+
 // #define PIN_I2S_BCLK_HORN 42
 // #define PIN_I2S_WS_HORN 2
 // #define PIN_I2S_DOUT_HORN 1

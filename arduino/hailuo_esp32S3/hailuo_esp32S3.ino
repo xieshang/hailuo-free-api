@@ -6,14 +6,13 @@
 #include "HTTPClient.h"
 #include "cJSON.h"
 #include <ArduinoJson.h>
+#include <ezButton.h>
 #include "http.h"
 #include "esp_sntp.h"
 #include "usbmsc.h"
-#include "Audio.h"
 
-#define home  0
+#define home  1
 
-Audio audio;
 HTTPClient http_client;
 
 const char *ntpServer1 = "pool.ntp.org";
@@ -34,7 +33,7 @@ const char *time_zone = "CST-8";  // TimeZone rule for Europe/Rome including day
 
 //按键0定义
 #define BUTTON_PIN  0
-
+static ezButton button(BUTTON_PIN);
 uint64_t recording = 0;
 char recording_file_path[50] = {0};
 char recording_temp_file_path[] = "/voice/tmp_record.wav";
@@ -60,6 +59,7 @@ void timeavailable(struct timeval *t) {
 void setup() {
   Serial.begin(115200);
   Serial.setDebugOutput(true);
+  Serial.println("system start");
   while(1)
   {
     if (!SD_MMC_Init())
@@ -73,10 +73,7 @@ void setup() {
     }
   }
   I2S_Init(I2S_NUM_0, I2S_MODE_RX, I2S_BITS_PER_SAMPLE_16BIT, 1024);
-  audio.setPinout(PIN_I2S_BCLK_HORN, PIN_I2S_WS_HORN, PIN_I2S_DOUT_HORN);
-  audio.setVolume(21); // default 0...21
-  Serial.printf("i2s prot: %d\n", audio.getI2sPort());
-  // I2S_Init(I2S_NUM_1, I2S_MODE_TX, I2S_BITS_PER_SAMPLE_16BIT, 1024);
+  //I2S_Init(I2S_NUM_1, I2S_MODE_TX, I2S_BITS_PER_SAMPLE_16BIT, 1024);
   Serial.println("I2S init ok");
   
   WiFi.mode(WIFI_STA);
@@ -100,12 +97,39 @@ void setup() {
 
 }
 
-char* audio_buff = NULL;
 
 void loop() {
-  if(digitalRead(BUTTON_PIN)==LOW){
-    delay(20);
-    if(digitalRead(BUTTON_PIN)==LOW){
+  static uint64_t ts_button = 0, ts_button_down = 0;
+  size_t audio_sz = 0;
+  char audio_buff[1024]; 
+  uint64_t ts_now = millis();
+
+  // 录音
+  if(recording){
+    i2s_read(I2S_NUM_0, (char*)audio_buff, 1024, &audio_sz, 0);
+    record_file_handle_temp.write((const uint8_t*)audio_buff, audio_sz);
+  }
+
+  if(ts_button < ts_now){
+    button.loop();
+    ts_button = ts_now + 50;    
+  }
+  Serial.printf("ts_now: %d\n", ts_now);
+  Serial.printf("ts_button: %d\n", ts_button);
+  Serial.printf("ts_button_down: %d\n", ts_button_down);
+
+  if(button.isPressed() && ts_button_down == 0){
+    ts_button_down = ts_now;
+  }else{
+  }
+  if(button.isReleased() && ts_button_down != 0){
+    uint32_t ts_hold = ts_now - ts_button_down;
+    ts_button_down = 0;
+    ts_button = 0;
+
+    Serial.printf("key hold: %d ms\n", ts_hold);
+
+    if(ts_hold < 1500){
       if(recording == 0)
       {
         recording = millis();  //标记开始录音并生成文件名
@@ -113,18 +137,16 @@ void loop() {
         struct tm timeinfo;
         localtime_r(&now, &timeinfo);
         sprintf(recording_file_path, "/voice/%d-%02d-%02d_%02d-%02d-%02d_record.wav", timeinfo.tm_year + 1900, timeinfo.tm_mon + 1, timeinfo.tm_mday, timeinfo.tm_hour, timeinfo.tm_min, timeinfo.tm_sec);
-        deleteFile(SD, recording_temp_file_path);
-        record_file_handle_temp = SD.open(recording_temp_file_path, FILE_WRITE);
+        deleteFile(SD_MMC, recording_temp_file_path);
+        record_file_handle_temp = SD_MMC.open(recording_temp_file_path, FILE_WRITE);
         Serial.printf("start recording to %s\n", recording_file_path);
       }else{
         recording = 0;  //标记结束录音
-        free(audio_buff);
-        audio_buff = NULL;
         //临时文件转移到正式文件并加上wav头
         record_file_handle_temp.close();
-        record_file_handle_temp = SD.open(recording_temp_file_path, FILE_READ);
+        record_file_handle_temp = SD_MMC.open(recording_temp_file_path, FILE_READ);
         Serial.printf("%s size: %d\n", recording_temp_file_path, record_file_handle_temp.size());
-        record_file_handle = SD.open(recording_file_path, FILE_WRITE);
+        record_file_handle = SD_MMC.open(recording_file_path, FILE_WRITE);
         char header[44];
         CreateWavHeader(header, record_file_handle_temp.size());
         record_file_handle.write((const uint8_t*)header, sizeof(header));
@@ -144,17 +166,18 @@ void loop() {
         Serial.printf("end recording to %s\n", recording_file_path);
         Serial.printf("time: %d ms\n", millis() - recording);
 
-        record_file_handle = SD.open(recording_file_path, FILE_READ, false);
-        #if home
-          if(http_post_audio_stream("http://192.168.1.42:5000/phone_msg?model=hailuo&response_format=json", &record_file_handle, record_file_handle.size(), recording_file_path))
-        #else
-          if(http_post_audio_stream("http://192.168.0.5:5000/phone_msg?model=hailuo&response_format=json", &record_file_handle, record_file_handle.size(), recording_file_path))
-        #endif
+        record_file_handle = SD_MMC.open(recording_file_path, FILE_READ, false);
+        // #if home
+          if(http_post_audio_stream("http://192.168.1.42:8000/v1/chat/phone_voice?model=hailuo&response_format=voice", &record_file_handle, record_file_handle.size(), recording_file_path))
+        // #else
+          // if(http_post_audio_stream("http://192.168.0.5:8000/v1/chat/phone_voice?model=hailuo&response_format=voice", &record_file_handle, record_file_handle.size(), recording_file_path))
+        // #endif
         {
           Serial.printf("post result: %s\n", recording_file_path);
         }
         record_file_handle.close();
         recording = 0;  //标记结束录音
+        ts_button_down = 0;
       }
     }
   }

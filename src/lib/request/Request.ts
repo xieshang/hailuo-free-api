@@ -40,6 +40,8 @@ export default class Request {
 
     constructor(ctx, options: RequestOptions = {}) {
         const chunks = [];
+        logger.info('headers', ctx.req.headers);
+        logger.info('body', ctx.req.body);
         logger.info('~~~~', ctx.req.headers['content-type']);
         if(ctx.req.headers['content-type'] === 'application/octet-stream' || ctx.req.headers['content-type'] === 'audio/wave') {
             ctx.req.on('data', (chunk) => {

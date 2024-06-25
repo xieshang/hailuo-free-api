@@ -93,8 +93,10 @@ export default {
 
       if(request.headers['content-type'] === 'application/octet-stream' || request.headers['content-type'] === 'audio/wave') {
         // 等待数据到达
-        await new Promise(resolve => setTimeout(resolve, 1000));
-        logger.info("request.body:", request.binary.length);
+        while(request.binary === undefined) {
+          await new Promise(resolve => setTimeout(resolve, 100));
+        }
+        logger.info("request.binary:", request.binary.length);
         // 将二进制数据写入文件
         const tmpFilePath = `./voice_temp/${Date.now()}_record.wav`;
         await fs.writeFile(tmpFilePath, request.binary);

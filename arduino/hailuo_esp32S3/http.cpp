@@ -93,17 +93,18 @@ int http_post_audio_stream(String url, Stream * stream, uint32_t len, char* outf
   HTTPClient http;
 
   http.setTimeout(30000);
-  http.addHeader("Content-Type", "audio/wave");
-  http.addHeader("Content-Length", String(len, DEC));
-  http.addHeader("Authorization", "Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJleHAiOjE3MjExMTUwNzMsInVzZXIiOnsiaWQiOiIyNDc0NTE1OTQ5NTc3NTQzNzMiLCJuYW1lIjoi5bCP6J665bi9NDM3MyIsImF2YXRhciI6Imh0dHBzOi8vY2RuLnlpbmdzaGktYWkuY29tL3Byb2QvdXNlcl9hdmF0YXIvMTcwNjI2NzU5ODg3NTg5OTk1My0xNzMxOTQ1NzA2Njg5NjU4OTZvdmVyc2l6ZS5wbmciLCJkZXZpY2VJRCI6IjI0NzQ1MTU5NDcxODY3OTA0NiIsImlzQW5vbnltb3VzIjpmYWxzZX19.40UhMhuGo9kr79fOL7lflCiDd10z2DyRIUELwNjjfb4");
   if (!http.begin(url))
   {
     Serial.println("\nfailed to begin http\n");
     return 0;
   }
-
+  http.addHeader("Content-Type", "audio/wave");
+  http.addHeader("Content-Length", String(len, DEC));
+  http.addHeader("model", "hailuo");
+  http.addHeader("response_format", "voice");
+  http.addHeader("authorization", "Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJleHAiOjE3MjExMTUwNzMsInVzZXIiOnsiaWQiOiIyNDc0NTE1OTQ5NTc3NTQzNzMiLCJuYW1lIjoi5bCP6J665bi9NDM3MyIsImF2YXRhciI6Imh0dHBzOi8vY2RuLnlpbmdzaGktYWkuY29tL3Byb2QvdXNlcl9hdmF0YXIvMTcwNjI2NzU5ODg3NTg5OTk1My0xNzMxOTQ1NzA2Njg5NjU4OTZvdmVyc2l6ZS5wbmciLCJkZXZpY2VJRCI6IjI0NzQ1MTU5NDcxODY3OTA0NiIsImlzQW5vbnltb3VzIjpmYWxzZX19.40UhMhuGo9kr79fOL7lflCiDd10z2DyRIUELwNjjfb4");
+  
   int http_code;
-
 
   http_code = http.sendRequest("POST", stream, len);
 
